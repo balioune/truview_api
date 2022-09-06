@@ -1,10 +1,12 @@
+from __future__ import unicode_literals
+
 import requests
 from datetime import datetime
 from datetime import date
 
 import json
 from time import time as timestamp
-from .models import *
+from dashboard.models import Interface, InterfaceBurst
 import threading
 
 WAIT_SECONDS = 60
@@ -32,7 +34,7 @@ with open(filepath) as fp:
        if len(line.split('\t')) > 1:
           #authToken = line.split('\t')[6]
           authToken = line.split('\t')[6].split('\n')[0]
-          print("authToken: ", authToken)
+          #print("authToken: ", authToken)
        line = fp.readline()
        cnt += 1
 # Authentication
@@ -46,35 +48,56 @@ headers['Accept'] = '*/*'
 # URL: Domains
 url_domains = 'http://tlspbnflow02/api/v1/config/collection/json/system/Domains?'
 
-def get_domain_sites(domain_id):
-   url = 'http://tlspbnflow02/api/v1/config/collection/json/domain/{}/Sites?'.format(domain_id)
-   response = requests.get(url, headers = headers, verify=False)
-   return response.text
-
-def get_site_applications(siteId):
-   url = 'http://tlspbnflow02/api/v1/trafficanalysis?ViewBy=Application&ViewBy=ApplicationClass&Metric=TotalUtilization&Metric=TotalThroughput&Metric=TotalPPS&Metric=TotalFPS&period=LAST_60_MIN&startTime=1654588320000&endTime=1654591920000&siteId={}'.format(siteId)
-   response = requests.get(url, headers = headers, verify=False)
-   return response.text
-
 def app_usage_per_interface(interfaceId, DeviceIp, DeviceName):
    url = 'http://tlspbnflow02/api/v1/trafficanalysis?ViewBy=Application&ViewBy=ApplicationClass&Metric=TotalUtilization&Metric=TotalThroughput&Metric=TotalPPS&Metric=TotalFPS&Metric=InCap&Metric=OutCap&grid=true&CalcOthers=false&rowLimit=10000&pageAtSource=true&passSort=true&raw=true&start=0&limit=10&OrderBy=TotalUtilization&period=LAST_60_MIN&autoUpdate=false&nfinterfaceId={}&PortIfType=2&DeviceIp={}&DeviceName={}&CollectorId=0&SortColumn=TotalUtilization&SortDirection=DESC'.format(interfaceId, DeviceIp, DeviceName)
    response = requests.get(url, headers = headers, verify=False)
    return response.text
 
-def periodic_function():
+def burst_per_interface(interfaceId, DeviceIp, DeviceName):
+   # url = 'http://tlspbnflow02/api/v1/trafficanalysis?ViewBy=Application&ViewBy=ApplicationClass&Metric=TotalUtilization&Metric=TotalThroughput&Metric=TotalPPS&Metric=TotalFPS&Metric=InCap&Metric=OutCap&grid=true&CalcOthers=false&rowLimit=10000&pageAtSource=true&passSort=true&raw=true&start=0&limit=10&OrderBy=TotalUtilization&period=LAST_60_MIN&autoUpdate=false&nfinterfaceId={}&PortIfType=2&DeviceIp={}&DeviceName={}&CollectorId=0&SortColumn=TotalUtilization&SortDirection=DESC'.format(interfaceId, DeviceIp, DeviceName)
+   url = 'http://tlspbnflow02/api/v1/perfdata?ViewBy=Time&Metric=InBurst1&Metric=InBurst2&Metric=InBurst3&Metric=InBurst4&Metric=InOther&Metric=OutBurst1&Metric=OutBurst2&Metric=OutBurst3&Metric=OutBurst4&Metric=OutOther&minGranularity=MIN15&grid=true&period=LAST_60_MIN&autoUpdate=false&nfinterfaceId={}&PortIfType=2&DeviceIp={}&DeviceName={}&CollectorId=0'.format(interfaceId, DeviceIp, DeviceName)
+   response = requests.get(url, headers = headers, verify=False)
+   return response.text
+
+def periodic_function_app_usage():
    response = requests.get(url_domains, headers = headers, verify=False)
    url_interfaces_by_domain = 'http://tlspbnflow02/api/v1/perfdata?OrderBy=TxUtilization&dir=DESC&ViewBy=Interface&Metric=RxUtilization&Metric=TxUtilization&Metric=RxThroughput&Metric=TxThroughput&Metric=RxPPS&Metric=TxPPS&Metric=Availability&Metric=CurrentStatus&wait=false&rowLimit=100000&searchFields=name,Interface.description&GroupSortColumn=&GroupSortDir=ASC&start=0&limit=10000&search=&period=LAST_60_MIN&autoUpdate=false'
    response = requests.get(url_interfaces_by_domain, headers = headers, verify=False)
    interfaces =  json.loads(response.text)
-   jsondata = list()
    for interface in interfaces['records']:
       response = app_usage_per_interface(interface['Interface']['id'], interface['Interface']['deviceIp'], interface['Interface']['deviceName'])
       response = json.loads(response)
       if "chart" in response.keys():
-         # print(response)
+         #print(response)
          for app in response['records']:
             o1 = Interface(in_bandwidth=0.0, date=date.today().strftime("%d/%m/%Y"), time=datetime.now().strftime("%H:%M:%S"), site_name = interface['Site'][0]['name'], router = interface['Device']['name'], interface = interface['Interface']['name'], description = interface['Interface']['description'], application = app['Application']['name'], app_description =  app['Application']['description'], out_bandwidth = app['TotalUtilization'], throughput =  app['TotalThroughput'])
             o1.save()
-      threading.Timer(WAIT_SECONDS, periodic_function).start()
+   threading.Timer(WAIT_SECONDS, periodic_function_app_usage).start()
 
-periodic_function()
+
+def periodic_function_interface_burst():
+   url_interfaces_by_domain = 'http://tlspbnflow02/api/v1/perfdata?OrderBy=TxUtilization&dir=DESC&ViewBy=Interface&Metric=RxUtilization&Metric=TxUtilization&Metric=RxThroughput&Metric=TxThroughput&Metric=RxPPS&Metric=TxPPS&Metric=Availability&Metric=CurrentStatus&wait=false&rowLimit=100000&searchFields=name,Interface.description&GroupSortColumn=&GroupSortDir=ASC&start=0&limit=10000&search=&period=LAST_60_MIN&autoUpdate=false'
+   response = requests.get(url_interfaces_by_domain, headers=headers, verify=False)
+   interfaces = json.loads(response.text)
+
+   for interface in interfaces['records']:
+      response = burst_per_interface(interface['Interface']['id'], interface['Interface']['deviceIp'], interface['Interface']['deviceName'])
+      response = json.loads(response)
+      if "chart" in response.keys():
+         #print(response)
+         for app in response['records']:
+            o1 = InterfaceBurst(date=date.today().strftime("%d/%m/%Y"),
+                                time=datetime.now().strftime("%H:%M:%S"),
+                                site_name = interface['Site'][0]['name'],
+                                router = interface['Device']['name'],
+                                interface = interface['Interface']['name'],
+                                InBurst1 = app['InBurst1'],
+                                InBurst2 = app['InBurst2'],
+                                InBurst3 = app['InBurst3'],
+                                InBurst4 = app['InBurst4'])
+            o1.save()
+   threading.Timer(WAIT_SECONDS, periodic_function_interface_burst).start()
+
+periodic_function_app_usage()
+
+periodic_function_interface_burst()
