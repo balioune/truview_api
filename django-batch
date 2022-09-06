@@ -15,8 +15,8 @@ DOMAINS_DICT = dict()
 SITES_DOMAIN_DICT = dict()
 
 local_timestamp = timestamp()
-start_time = str(local_timestamp).split('.')[0] + '000'
-end_time = str(local_timestamp + 3600).split('.')[0] + '000'
+end_time = str(local_timestamp).split('.')[0]
+start_time = str(local_timestamp - 3600000).split('.')[0]
 
 
 # Get token
