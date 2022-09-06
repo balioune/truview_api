@@ -1,0 +1,80 @@
+import requests
+from datetime import datetime
+from datetime import date
+
+import json
+from time import time as timestamp
+from .models import *
+import threading
+
+WAIT_SECONDS = 60
+
+DOMAINS_DICT = dict()
+SITES_DOMAIN_DICT = dict()
+
+local_timestamp = timestamp()
+start_time = str(local_timestamp).split('.')[0] + '000'
+end_time = str(local_timestamp + 3600).split('.')[0] + '000'
+
+
+# Get token
+authToken=''
+import subprocess
+
+subprocess.call('/home/TVadmin/django_code/analytics_dashboard/dashboard/auth.sh', shell=True)
+
+filepath = 'tvc-client.cookie'
+
+with open(filepath) as fp:
+   line = fp.readline()
+   cnt = 1
+   while line:
+       if len(line.split('\t')) > 1:
+          #authToken = line.split('\t')[6]
+          authToken = line.split('\t')[6].split('\n')[0]
+          print("authToken: ", authToken)
+       line = fp.readline()
+       cnt += 1
+# Authentication
+# Variables
+
+headers = dict()
+headers['Cookie'] = 'authToken=' + authToken
+headers['User-Agent'] = 'curl/7.29.0'
+headers['Accept'] = '*/*'
+
+# URL: Domains
+url_domains = 'http://tlspbnflow02/api/v1/config/collection/json/system/Domains?'
+
+def get_domain_sites(domain_id):
+   url = 'http://tlspbnflow02/api/v1/config/collection/json/domain/{}/Sites?'.format(domain_id)
+   response = requests.get(url, headers = headers, verify=False)
+   return response.text
+
+def get_site_applications(siteId):
+   url = 'http://tlspbnflow02/api/v1/trafficanalysis?ViewBy=Application&ViewBy=ApplicationClass&Metric=TotalUtilization&Metric=TotalThroughput&Metric=TotalPPS&Metric=TotalFPS&period=LAST_60_MIN&startTime=1654588320000&endTime=1654591920000&siteId={}'.format(siteId)
+   response = requests.get(url, headers = headers, verify=False)
+   return response.text
+
+def app_usage_per_interface(interfaceId, DeviceIp, DeviceName):
+   url = 'http://tlspbnflow02/api/v1/trafficanalysis?ViewBy=Application&ViewBy=ApplicationClass&Metric=TotalUtilization&Metric=TotalThroughput&Metric=TotalPPS&Metric=TotalFPS&Metric=InCap&Metric=OutCap&grid=true&CalcOthers=false&rowLimit=10000&pageAtSource=true&passSort=true&raw=true&start=0&limit=10&OrderBy=TotalUtilization&period=LAST_60_MIN&autoUpdate=false&nfinterfaceId={}&PortIfType=2&DeviceIp={}&DeviceName={}&CollectorId=0&SortColumn=TotalUtilization&SortDirection=DESC'.format(interfaceId, DeviceIp, DeviceName)
+   response = requests.get(url, headers = headers, verify=False)
+   return response.text
+
+def periodic_function():
+   response = requests.get(url_domains, headers = headers, verify=False)
+   url_interfaces_by_domain = 'http://tlspbnflow02/api/v1/perfdata?OrderBy=TxUtilization&dir=DESC&ViewBy=Interface&Metric=RxUtilization&Metric=TxUtilization&Metric=RxThroughput&Metric=TxThroughput&Metric=RxPPS&Metric=TxPPS&Metric=Availability&Metric=CurrentStatus&wait=false&rowLimit=100000&searchFields=name,Interface.description&GroupSortColumn=&GroupSortDir=ASC&start=0&limit=10000&search=&period=LAST_60_MIN&autoUpdate=false'
+   response = requests.get(url_interfaces_by_domain, headers = headers, verify=False)
+   interfaces =  json.loads(response.text)
+   jsondata = list()
+   for interface in interfaces['records']:
+      response = app_usage_per_interface(interface['Interface']['id'], interface['Interface']['deviceIp'], interface['Interface']['deviceName'])
+      response = json.loads(response)
+      if "chart" in response.keys():
+         # print(response)
+         for app in response['records']:
+            o1 = Interface(in_bandwidth=0.0, date=date.today().strftime("%d/%m/%Y"), time=datetime.now().strftime("%H:%M:%S"), site_name = interface['Site'][0]['name'], router = interface['Device']['name'], interface = interface['Interface']['name'], description = interface['Interface']['description'], application = app['Application']['name'], app_description =  app['Application']['description'], out_bandwidth = app['TotalUtilization'], throughput =  app['TotalThroughput'])
+            o1.save()
+      threading.Timer(WAIT_SECONDS, periodic_function).start()
+
+periodic_function()
