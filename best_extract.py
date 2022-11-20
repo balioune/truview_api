@@ -42,6 +42,7 @@ headers['Accept'] = '*/*'
 url_domains = 'http://tlspbnflow02/api/v1/config/collection/json/system/Domains?'
 
 def burst_per_interface_hourly(interfaceId, DeviceIp, DeviceName, start_time=None, end_time=None):
+   print(len(start_time), len(end_time))
    url = 'http://tlspbnflow02/api/v1/perfdata?ViewBy=Time&Metric=InBurst1&Metric=InBurst2&Metric=InBurst3&Metric=InBurst4&Metric=InOther&Metric=OutBurst1&Metric=OutBurst2&Metric=OutBurst3&Metric=OutBurst4&Metric=OutOther&minGranularity=MIN15&grid=true&period=CUSTOM_TIME&autoUpdate=false&startTime={}&endTime={}&nfinterfaceId={}&PortIfType=2&DeviceIp={}&DeviceName=RTRB1SHADU&CollectorId=0'.format(start_time, end_time, interfaceId, DeviceIp, DeviceName)
    response = requests.get(url, headers = headers, verify=False)
    return response.text
